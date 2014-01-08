@@ -1,0 +1,96 @@
+function awgmakeseq(cntrl, pulselist, filename)
+% awgmakeseq(cntrl, pulselist, filename)
+% cntrl: file, logjump
+% pulselist: pulse number and optional further parameters for each line:
+% (one row for each line)
+% repeat count (default = 0, i.e. infinity)
+% wait trigger (default = 0)
+% goto-1 (default 0)
+% goto line (default -1 = next line)
+%
+% If pulselist is a row vector, it is assumed to contain pulse numbers and 
+% transposed first. Thus, it is not possible to generate single line
+% sequence files with parameters other than the default.
+
+
+global awgdata;
+
+load(awgdata.datafile);
+
+if size(pulselist, 1) == 1
+    pulselist = pulselist';
+end
+
+nchan = size(pulsedata(pulselist(1, 1)).pulsetab, 1) - 1;
+
+ndef = 5 - size(pulselist, 2);
+nlines = size(pulselist, 1);
+default = [zeros(nlines, 3), -ones(nlines, 1)];
+%default(end, 3) = 1; % go to first line. % does not combine with inf loop
+
+pulselist = [pulselist, default(:, end-ndef+1:end)];
+
+
+
+
+%Byte counting:
+if strfind(cntrl, 'logjump')
+    nbytes = 24+45; % header+lines + last 3 lines.
+else
+    nbytes = 24+48; % header+lines + last 3 lines.
+end
+
+if regexp(cntrl, 'file')
+    out = fopen(filename, 'w');
+else
+    for i = 1:nlines
+        namelen = length(pulsedata(pulselist(i, 1)).name);
+        nbytes = nbytes + nchan * (namelen + (namelen>0) + 16) + 16;
+    end
+    
+    out = awgdata.awg;
+
+    % prevent terminating command (i.e. sending EOI) until record is complete
+    if strcmp(out.Type, 'gpib')
+        out.EOImode = 'off';
+    end
+
+    fprintf(out, '%s', sprintf('MMEM:DATA "/wfm/%s", #7%07d', filename, nbytes));
+end
+    
+fprintf(out, '%s', sprintf('MAGIC 300%1d\r\nLINES %04d\r\n', nchan, nlines));
+
+for i = 1:nlines
+    
+    name = pulsedata(pulselist(i, 1)).name;
+    if ~isempty(name)
+        name = ['_', name];
+    end
+
+    for j = 1:nchan
+        fprintf(out, '%s', sprintf('"p%06d%s_%1d.wfm",', pulselist(i, 1), name, j));
+    end
+    %4 + p + 6 + _ + namelen(+ > 0) + '1.wfm,' = 8+6+name
+    
+    fprintf(out, '%s', sprintf('%05d,%1d,%1d,%04d\r\n', pulselist(i, 2:end)));
+    % 16 bytes.
+end
+
+% next string terminates command (i.e. sends EOI)
+if isempty(regexp(cntrl, 'file') && strcmp(out.Type, 'gpib')
+    out.EOImode = 'on';
+end
+
+if strfind(cntrl, 'logjump')
+    fprintf(out, '%s', sprintf('JUMP_MODE LOGIC\r\nJUMP_TIMING SYNC\r\nSTROBE 0\r\n'));
+else
+    fprintf(out, '%s', sprintf('JUMP_MODE SOFTWARE\r\nJUMP_TIMING SYNC\r\nSTROBE 0\r\n'));
+end
+% 45 bytes, 48 for JUMP_MODE SOFTWARE
+    
+if regexp(cntrl, 'file') % || 1
+    fclose(out);
+end
+
+
+%nbytes

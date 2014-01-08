@@ -1,0 +1,13 @@
+function gradfbinit
+
+global fbdata;
+
+fbdata.fbon = 0;
+fbdata.igain  = .1;
+fbdata.pgain  = .2;
+
+npoints = 200;
+fbdata.time = nan(1, npoints);
+fbdata.phi = nan(1, npoints);
+fbdata.intval = nan(1, npoints);
+fbdata.poltime = nan(1, npoints);

@@ -1,0 +1,10 @@
+*~
+._*
+*.asv
+.Ap*
+gtalk/*
+attic/*
+.DS*
+general/*
+*.hg*
+*#
