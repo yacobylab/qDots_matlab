@@ -812,7 +812,7 @@ end
 %FPGA Ramsey Ramsey 
 %estimate detuning w/ ramsey then do ramsey. 
 %currently uses multiple time offsets. 
-if 1
+if 0
 
 clear pg 
 dt=16; num_pulse=4; num_evo=floor(120/num_pulse); %assumes we have 120 total evos. 
@@ -859,9 +859,9 @@ end
 awgcntrl('on start wait err raw');
 end
 
-mean_out0=17500; mean_freq=80; 
+mean_out0=16000; mean_freq=80; 
 %cntrl_out=18350;
-cntrl_out=17500; 
+cntrl_out=16000; 
 nreps=1024; nexp=4;
 CS.MaxPulseCount.set(nests);
 vi.SetControlValue('N exps',nexp);

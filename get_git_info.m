@@ -10,8 +10,9 @@ if nargin==0
 end
 gitinfo = [];
 cd(wd);
-gitinfo.SHA1=sscanf(git('show-branch --sha1-name working'),'[%d],%s');
-gitstr=sscanf(git('show-branch working'),'%s]%s');%this will be [branch_name]
+tmp = sscanf(git('show-branch --sha1-name'),'%s,%s'); %this will be [sha1]
+gitinfo.SHA1=tmp(2:end-1); % get rid of brackets
+gitstr=sscanf(git('show-branch'),'%s,%s');%this will be [branch_name]
 if strfind(gitstr,'fatal')
     gitinfo.branch = sprintf('%s is not a git repo',wd);
 else
