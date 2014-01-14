@@ -2,7 +2,7 @@ function out = ana_rescale_dbz_multi(file, config)
 %function out = ana_rescale_dbz_multi(file, config)
 % analyzes many files taken in a row for dbz phase estimation
 % assumes all the files have the same mean dbz, fourier times, etc
-
+%chokes if you analyze data while scan is going on. 
 %options: how to find frequencies: bayes / bayslw / fpgafreqs / raw
 %(fourier is default)
 %calib fits first data set (hopefully, 0 to 49 ns evo time to find alpha
@@ -26,7 +26,7 @@ if ~exist('file','var') || isempty(file)
 end
 
 %Flip the files to make sure the shortest evo time is first.
-file=fliplr(file);
+%file=fliplr(file);
 
 if isempty(file) || (isnumeric(file{1}) && file{1}==0)
     return
@@ -78,7 +78,7 @@ for j = 1:length(file)
          if isopt(config,'rand') 
              config.fourier_inds=1:(length(xv)-50);          
          end
-         if length(xv)>2*length(config.fourier_inds) && any(xv(config.fourier_inds)==xv(config.fourier_inds+length(config.fourier_inds)))             
+         if isopt(config,'2meas') && length(xv)>2*length(config.fourier_inds) && any(xv(config.fourier_inds)==xv(config.fourier_inds+length(config.fourier_inds)))             
              inds=find(xv(config.fourier_inds)==xv(config.fourier_inds+length(config.fourier_inds)));
              fourier_inds = [config.fourier_inds config.fourier_inds(inds)+length(config.fourier_inds)];                       
              config.fourier_inds=config.fourier_inds(inds)+length(config.fourier_inds).*(config.nmeas-1); 
@@ -246,7 +246,10 @@ if isopt(config,'single')
         tst=tstemp(:);%arrange all data points into a vector, the vector will be roughly time ordered
         evo_data=results(k).evo_data>config.threshold; 
         evo_data(inds,:)=[];
-        evost= evo_data(:);%similarly arrange the readout data, the entries of this vector will still correspond to the times in tst      
+        evost= evo_data(:);%similarly arrange the readout data, the entries of this vector will still correspond to the times in tst    
+        numfilt=500; 
+        evost=evost(numfilt:end-numfilt); 
+        tst=tst(numfilt:end-numfilt); 
         tstall=[tstall; tst];
         evostall=[evostall; evost];
     end    
@@ -263,7 +266,7 @@ if isopt(config,'single')
         out.newtimesing(m) = nanmean(tbigfinal((m-1)*config.N_avg+1:m*config.N_avg));
         dt(m)=nanstd(tbigfinal((m-1)*config.N_avg+1:m*config.N_avg)); 
     end
-    figure(7); clf; 
+    figure(7); 
     plot(out.newtimesing,out.newdatasing,'b.-')
     hold on
     %figure(8); clf; 
@@ -272,11 +275,13 @@ if isopt(config,'single')
     
     fitfn = @(p,x) p(1) +(p(2)*sin(2*pi*x/p(3) +p(7))).*exp(-((x+p(5))/p(4)).^p(6));
     mask = [1 1 1 1 0 0 1];
-    beta0 = [.4, .36, 1/config.m_dbz, 1400, 0, 2,0.01];         
+    beta0 = [.4, .36, 1/config.m_dbz, 1400, 0, 1.5,0.01];         
     params=fitwrap('plfit',out.newtimesing,out.newdatasing,beta0,fitfn,mask); 
     mask=[1 1 1 1 0 1 1]; 
     params2=fitwrap('plfit',out.newtimesing,out.newdatasing,params,fitfn,mask); 
-fprintf('T2* is %f \n', params(4))
+fprintf('T2* is %f \n', params2(4))
+out.T2=params2(4); 
+return
 end
 
 if isfield(config,'fourier_inds2') && ~isempty(config.fourier_inds2)

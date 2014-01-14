@@ -266,10 +266,13 @@ for k=1:length(out.detunings)
 end
 
 %%
-%% plot data sets with FPGA parameters
-d = ana_avg;
-d=flipud(d)
-gain=[];
+%% plot data sets with varying FPGA parameters, either offset or gain.
+temp = get_files('sm*.mat');
+files=fliplr(temp);
+d = ana_avg(files,struct('opts','noplot'));
+d=flipud(d);
+param=[];
+results=[];
 close all;
 figure(668); clf; hold on; 
 figure(666); clf; hold on; c = ['k' 'r' 'g' 'b' 'c' 'm' 'y'];
@@ -278,6 +281,7 @@ fitfn = @(p,x) p(1)+p(2)*cos(2*pi*x/p(3)+p(4)).*exp(-(x/p(5)).^p(6));
 clear T2err; clear T2rng; clear results;  
 c='krgbcmy';
 ydata=[]; xdata=[];
+param=[];
 for j =1:length(d)
     gd=plsinfo('gd',d(j).scan.data.pulsegroups(1).name,[],d(j).scantime);
     evo_size=0; 
@@ -285,14 +289,20 @@ for j =1:length(d)
     varlengths=cellfun(@length,gd.varpar); 
     fourier_size=sum(varlengths(1:evo_st-1)); 
     evo_size=sum(varlengths(evo_st:end)); 
-    evoinds=fourier_size+[6:evo_size]; 
+    evoinds=fourier_size+[1:evo_size];
+    fileindex=strfind(d(j).filename,'.mat');
     %param(j)=d(j).scan.data.FPGA.Offset;
-    param(j)=d(j).scan.data.FPGA.Gain;
+    %param(j)=d(j).scan.data.FPGA.Gain;
+    param(j)=fourier_size-1;
+    %param(j)=str2num(d(j).filename(fileindex-6));
+    
     cnum=mod(j,7)+1;
-    %names{j}=sprintf('Offset %d file %s',param(j), d(j).filename(4:end-4));
-    names{j}=sprintf('Gain %d file %s',param(j), d(j).filename(4:end-4));
+    names{j}=sprintf('Offset %d file %s',param(j), d(j).filename(4:end-4));
+    
     results(j).data = squeeze(nanmean(d(j).data{1}(:,:,evoinds)))';
     results(j).xv = d(j).xv{1}(evoinds);
+    results(j).filenum=d(j).filename(fileindex-4:fileindex-1);
+    names{j}=sprintf('#Offset %d file %s',param(j), results(j).filenum);
     figure(666);
     if j<8
     plot(results(j).xv,results(j).data,'.-','Color',c(cnum),'DisplayName',names{j})        
@@ -305,50 +315,106 @@ end
 
 legend show;
 
+%% Configure the parameter that you are varying.
 
-%% Fit the data sets
-data = [];
-model = [];
-figure(667); clf; hold on;
+for j=1:length(d)
+    %param(j)=d(j).scan.data.FPGA.Offset;
+    %param(j)=d(j).scan.data.FPGA.Gain;
+    %param(j)=fourier_size-1;
+    param(j)=str2num(d(j).filename(fileindex-6));
+end
+
+
+%% Fit the data sets and plot T2* vs the parameter.
+data = []; model = []; tau=[]; fit=[]; period= []; inds=[]; decay=[];
+figure(667); clf; hold on; figure(668); clf;
 period=[]; tau=[]; betas=[];
-fitfn = @(p,x) p(1) +(p(2)*sin(2*pi*x/p(3) +p(7))).*exp(-((x+p(5))/p(4)).^p(6));
-mask = [1 1 1 1 0 0 0];
 boundary = 0;
 for j = 1:length(results)
     cnum=mod(j,7)+1;
     if all((~isnan(results(j).data)))
+        clear maskfit;
         %maskfit=6:length(results(j).xv);
         maskfit=1:length(results(j).xv); 
         data(j).y = results(j).data(:,maskfit); 
         data(j).x = results(j).xv(:,maskfit);
-        fitfn = @(p,x) p(1) +(p(2)*sin(2*pi*x/p(3) +p(6))).*exp(-((x)/p(4)).^p(5));
-        pars = [.3, .3, 2000, 1500, 2,-pi/2];
-        lb = [.01 .01 75 50 1.5  0];
-        ub=  [.7 .7 500 5000 3 2*pi];
-        options = optimset('Display','off','MaxIter',10000,'TolFun',1e-13,'Algorithm',{'levenberg-marquardt',.005});
-        %pars=lsqcurvefit(fitfn,pars,data(1).x,data(1).y,lb,ub,options);
-        pars=lsqcurvefit(fitfn,pars,data(j).x,data(j).y,[],[],options);
-   
-        fit(j,:)=fitfn(pars,data(j).x);
-        tau(j)=abs(pars(4));
-        period(j)=pars(3);
-        tau(j)=pars(4);
+        figure(13); hold on; plot(data(j).x,data(j).y)
+% %         fitfn = @(p,x) p(1) +(p(2)*sin(2*pi*x/p(3) +p(6))).*exp(-((x)/p(4)).^p(5));
+% %         pars = [.3, .3, 2000, 1000, 2,-pi/2];
+       
+        fitfn = @(p,x) p(1) +p(2)*exp(-((x)/p(3)).^p(4));
+        pars = [.3, .3, 1500,1.5];
         
-        figure(667); hold on;
-        plot(results(j).xv,results(j).data,'.-','Color',c(cnum),'DisplayName',names{j})    
-        plot(results(j).xv,fit(j,:),'-','Color',c(cnum)) 
+        options = optimset('Display','off','MaxIter',10000,'TolFun',1e-13,'Algorithm',{'levenberg-marquardt',.005});
+
+      try
+        %Lsq seems a bit more robust the nlinfit, so do it first.
+        [pars B res D E F jac] =lsqcurvefit(fitfn,pars,data(j).x,data(j).y,[],[],options);
+       [pars,res,jac,sig] = fitwrap('plinit plfit',data(j).x,data(j).y,pars,fitfn,[1 1 1 1]);
+        
+       jac=jac';
+       jac=reshape(jac,length(jac)/4,4); 
+        
+       ci=nlparci(pars,res,'jacobian',jac);
+       results(j).T2 =abs(pars(3));
+       results(j).T2rng=ci(3,:)'; 
+       results(j).fitpars = pars;       
+       results(j).exp=pars(4); 
+       results(j).exprng=ci(4,:); 
+    catch
+        results(j).T2 = NaN;
+        results(j).fitpars = [];
+    end
+        
+        results(j).fit=fitfn(pars,data(j).x);
+        tau(j)=abs(pars(3));
+        decay(j)=pars(4);
+        
+        figure(668); hold on;
+        plot(data(j).x,data(j).y,'.-','Color',c(cnum),'DisplayName',sprintf('Ofst=%d T2*=%d Decay = %.2f file %s', param(j), round(tau(j)),decay(j),results(j).filenum))    
+        plot(data(j).x,results(j).fit,'-','Color',c(cnum),'DisplayName','fit') 
+        xlabel('time (ns)');
+        ylabel('triplet probability')
     end
     
+    
 end
-
 legend show;
 
+[p_sort inds]=sort(param);
+t_sort=tau(inds);
+figure(1); clf; plot(p_sort,t_sort,'.-');
+xlabel('Offset');
+ylabel('T2*');
 
-figure(667); clf; hold on;
-    for j=1:2; 
-        %plot(data(j).x,out.results(j).data(ind,mask2),'x-'); hold on; 
-        plot(data(j).x,fitfn(model(j).pt(betas(j,:)),data(j).x),'r');
-    end
+
+
+%% Plot the results of the fit
+
+
+
+rlen=length(results);
+results_sort=struct();
+results_sort=results;
+results_sort(1:rlen)=results(inds(1:rlen));
+
+
+figure(666);
+hleg=legend('toggle');
+set(hleg,'Interpreter','none');
+[~,ind]=max([results_sort.T2]);
+% figure(667); clf; plot(gain,[results.T2],'x','LineWidth',3,'MarkerSize',5); hold on; 
+T2rng=[results_sort.T2rng];
+% plot(gain,T2rng(1,:),gain,T2rng(2,:),'x-','MarkerSize',5)
+figure(667); clf;
+T2err(1,:)=[results_sort.T2]-T2rng(1,:); 
+T2err(2,:)=-([results_sort.T2]-T2rng(2,:)); 
+errorbar(p_sort,[results_sort.T2],T2err(1,:),T2err(2,:),'x-','LineWidth',1,'MarkerSize',10); 
+%xlabel('# Estimation pulse length'); 
+xlabel('FPGA Offset')
+ylabel('T2*')
+
+
 
 
 

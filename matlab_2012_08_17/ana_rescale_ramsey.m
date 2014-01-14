@@ -163,7 +163,9 @@ for j = 1:length(file)
         data_evo=anaHistScale(scan,data_evo,t1);
         results(j).evo_data=squeeze(data_evo{1});
     end
-    
+    if isfield(scan.data,'FPGA') && isfield(scan.data.FPGA,'freqs') && ~isempty(scan.data.FPGA.freqs)        
+        results(j).FPGAfreqs=scan.data.FPGA.freqs;
+    end
     
 end
 out.t1=t1;
@@ -192,6 +194,10 @@ n_alias = floor(config.m_dbz/nyq); % number of times signal is aliased
 
 %Estimate the frequencies from the estimation period.
 for j = 1:length(results)
+    if isfield(results,'FPGAfreqs')
+        ff=@(x) (n_alias)*nyq+(-1)^(n_alias)*x/512*nyq+mod(n_alias,2)*nyq;
+        results(j).FPGAfreqs=ff(results(j).FPGAfreqs);            
+    end
     if isopt(config,'bayes')        
         config = def(config,'bayes_freq',[nyq*n_alias,nyq*(n_alias+1)]);         
         bayes_freq=config.bayes_freq; 
@@ -212,20 +218,9 @@ for j = 1:length(results)
     elseif isopt(config,'bayslw')  
         dbz = get_dbzbayes(results2(j).fourier_data,config.ftime,F_samp,n_alias);
     elseif isopt(config, 'raw') %plot the raw data only, no correction
-        dbz=config.m_dbz*linspace(1,1,size(results2(j).fourier_data,1))';
-    elseif isopt(config, 'fpgafreqs') %load the freqs from the FPGA and use them for the correction
-        if isfield(scan.data,'FPGA') 
-            freqs=scan.data.FPGA.freqs; 
-        else             
-            fname=sprintf('fpga_12_20_freqs_%d.dat',j-1);
-            freqs=importdata(fname);
-        end
-        %actfreqs=2*(1/12/2)-freqs*(1/12/2)/256; %hard-coded aliasing correction
-        %ff = (n_alias+.5)*nyq+(-1)^n_alias*nyq*linspace(-.5,.5,256);
-        %ff=@(x) (n_alias+.5)*nyq+(-1)^n_alias*nyq.*(x-128.5)./255;%is this correct? 
-        ff=@(x) (n_alias)*nyq+(-1)^(n_alias)*x/256*nyq+mod(n_alias,2)*nyq;
-            
-        dbz=ff(freqs)';  
+        dbz=config.m_dbz*linspace(1,1,size(results2(j).fourier_data,1))';      
+    elseif isopt(config,'fpgafreqs') 
+        dbz=results(j).FPGAfreqs;   
     else
         dbz = get_dbzthreshold(results2(j).fourier_data,config.ftime, config.m_dbz);
         dbzall=[dbzall; dbz]; 
@@ -236,8 +231,10 @@ for j = 1:length(results)
             plot(dbz,dbz2,'.')
         end
     end
-    
+
+   
     results(j).dbzs=dbz;
+    
 
 end
 
@@ -281,11 +278,11 @@ for k=1:length(vcofreqs);
     
     %Rescale the data sets individually and together
     for j=1:length(results)
-
-%when doing post selection, will start by not changing mdbz. let's consider
-%this though...
-    mdbz=mean(mean([results.dbzs_ramsey]));
-  
+        
+        %when doing post selection, will start by not changing mdbz. let's consider
+        %this though...
+        mdbz=mean(mean([results.dbzs_ramsey]));
+        
     %Rescale and average each dataset individually
     evodata=(results(j).evo_data>config.threshhold); %threshold from histogramqubitdetection
     tstemp=results(j).dbzs_ramsey*results(j).t/mdbz;%this is a matrix of corrected times, with each entry corresponding to an entry of the evolution data, it's a column vector of magnetic field corrections for each of the 1000 runs multiplied by a row vector of the 50 nominal times
@@ -293,6 +290,7 @@ for k=1:length(vcofreqs);
         evodata(results(j).badinds,:)=[];
         tstemp(results(j).badinds,:)=[];
     end
+
     tst=tstemp(:);%arrange all data points into a vector, the vector will be roughly time ordered
     evost= evodata(:);%similarly arrange the readout data, the entries of this vector will still correspond to the times in tst
     [tt ind]=sort(tst); %find correct time order
@@ -325,6 +323,7 @@ for k=1:length(vcofreqs);
     
     end
     
+
 
 
 out.results=results; 
@@ -434,6 +433,23 @@ end
 out.fit.tau=tau;
 out.fit.const=const;
 out.fit.period=period;
+
+%plot a histogram of the frequencies fit.
+dbzset=[results.dbzs];
+[ct,bins]=hist(dbzset(:),30);
+figure(44); clf; subplot(1,2,1); 
+plot(bins,ct,'.-'); hold on;
+title('Histogram of Frequencies measured')
+legend('Computer','FPGA')
+if isfield(results,'FPGAfreqs')
+    fpgafreqs=[results.FPGAfreqs]; 
+    [ct,bins]=hist(fpgafreqs(:),30);
+    plot(bins,ct,'r.-')
+    subplot(1,2,2); 
+    plot(dbzset(:),fpgafreqs(:),'.') 
+end
+
+
 
 end
 

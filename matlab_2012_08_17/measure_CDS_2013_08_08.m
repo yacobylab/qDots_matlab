@@ -591,12 +591,12 @@ figure(6); plot(gainvals,mean(dmm,2));
 sleep
 %% sweep a parameter
 parname = 'SampleCount';
-parvals = 5:12;
+parvals = (10:11);
 
 results = struct();
 for j = 1:length(parvals)
     CS.(parname).set(parvals(j));
-    d=smrun(fConfSeq2_v2('dBz_rot_ramsey_CDS_2013_08_28',struct('nloop',1, 'nrep',1,'opts','','datachan','DAQ2')));
+    d=smrun(fConfSeq2_v2('dBz_rot_ramsey_CDS_2013_08_28',struct('nloop',1, 'nrep',1,'opts','pol','datachan','DAQ2')));
     if CS.MaxPulseCount.get() ~=CS.NSamps.get()
         fprintf('missed triggers\n')
         keyboard
@@ -701,32 +701,40 @@ end
  vi.SetControlValue('stop',true)
 sleep
 
-%% Run a gain sweep using the FPGA 
+%% dBz/Ramsey: single evo gain scan.  
 %FPGA gain sweep / offset sweep ramsey
 %to change this to an offset scan, sweep mean_out and set offset
 %accordingly. 
 %info for dummies: VCO is about 6 Mhz / V, so 1 Mhz = 0.16 V= 500 bits. 
 % mean_freq=144; offset0=7895; g0=70.05; 
 % mean_freq2=350;
-mean_out0=18350; mean_freq=67; 
+mean_out0=17350; mean_freq=250; 
+cntrl_out=18350;
 
 %mean_out0=offset0+g0*mean_freq; 
-nreps=1024; nexp=9; nsamps=199; 
+nreps=1024; nexp=8; nsamps=100; nests=nsamps;
 CS.MaxPulseCount.set(nsamps); 
     vi.SetControlValue('N exps',nexp); 
     vi.SetControlValue('N reps',nreps); 
-    vi.SetControlValue('N elements',nsamps);    
+    vi.SetControlValue('N index',nsamps);
+    vi.SetControlValue('N est',nests);
+    vi.SetControlValue('control output',cntrl_out);
+    vi.SetControlValue('phase',0);
+
+try
     vi.Run([true]);
+catch
+end
     vi.SetControlValue('Reset',true);
 
 if 1    
 clear pg 
 pg.pulses=[71 72]; dt=12; 
 pg.ctrl='multi pack single'; 
-pg.chan = [3 4]; plen=4; 
+pg.chan = [3 4]; plen=5; 
 rtmp = pdload('right');
-vp1 = (dt:dt:200*dt)'-dt;
-vp2 =16*(0:65)';
+vp1 = (dt:dt:101*dt)'-dt;
+vp2 =30*(0:65)';
 m_start = 1e-3*max([vp1'])+sum(rtmp.reload.time)+.12;
 m_dur = 1;%rtmp.meas.time(1:3)*[1;-1;-1];
 pars1 = [plen, max(vp1), NaN, m_start, m_dur, 0]; pars2=[plen, norm(rtmp.sep.val)/sqrt(2), 0];
@@ -740,28 +748,223 @@ etmp=rtmp.exch; etmp.val(1:3) =[rtmp.markerburst.val(1:2),norm(rtmp.sep.val)/sqr
 pg.dict={struct('prep','@adprep', 'read2','@adread','prep2','@RFyprep','read','@RFyprep','exch',etmp),'right'};
 pg.varpar={vp1, vp2};%128+0*(1:128)';
 pg.params = {pars1, pars2};
-pg.name=sprintf(('dBz_rot_ramsey_CDS_2013_01_01'),upper(pg.dict{end}(1)));
-plsupdate(pg);
+pg.name=sprintf(('dBz_rot_ramsey_CDS_2014_01_08_2'),upper(pg.dict{end}(1)));
+    try
+        plsupdate(pg);
+    catch
+        plsdefgrp(pg);
+    end
 awgadd(pg.name);
 awgcntrl('on start wait err raw');
 end
 scan=fConfSeq2_v2(pg.name,struct('nloop',1,'nrep',nreps,'opts','FPGA2 logdbz pol','datachan','DAQ2','FPGA','freqs array'));    
 %    mean_outvals=linspace(mean_out0-4000,mean_out0+6000,nexp)
-gainvals=[0 linspace(36,39,nexp-1)]; 
-%gainvals=[37.25];
-%gain=35; 
+%gainvals=[0 linspace(36,39,nexp-1)]; 
+gainvals=[37.5];
+%gain=37.5; 
  for j=1:length(gainvals)
      gain=gainvals(j); 
 
 % for j=1:length(mean_outvals)
 %     mean_out=mean_outvals(j)
-    offst=mean_out0-gain*mean_freq2;     
+    offst=mean_out0-gain*mean_freq;     
     %offst=mean_out-gain*mean_freq2;     
     vi.SetControlValue('Offset',offst); 
     vi.SetControlValue('Gain',gain);     
     if sm_setgradient
-        smrun(scan,smnext('rot_ramsey_FPGA_R'));
+        %d=smrun(scan,smnext('rot_ramsey_FPGA_R'));
+        d=smrun(scan);
     end
+    
+    if any(isnan(d{1}))
+       break 
+    end
+end
+ vi.SetControlValue('stop',true)
+sleep
+
+%% dBz/Ramsey: single evo offset scan
+mean_out0=17350; mean_freq=250; 
+cntrl_out=18350;
+
+%mean_out0=offset0+g0*mean_freq; 
+nreps=1024; nexp=6; nsamps=120; nests=nsamps;
+CS.MaxPulseCount.set(nsamps); 
+CS.SampleCount.set(11);
+    vi.SetControlValue('N exps',nexp); 
+    vi.SetControlValue('N reps',nreps); 
+    vi.SetControlValue('N index',nsamps);
+    vi.SetControlValue('N est',nests);
+    vi.SetControlValue('control output',cntrl_out);
+    vi.SetControlValue('phase',0);
+
+try
+    vi.Run([true]);
+catch
+end
+    vi.SetControlValue('Reset',true);
+
+if 1    
+clear pg 
+pg.pulses=[71 72 72 72 72]; dt=12; 
+pg.ctrl='multi single'; 
+pg.chan = [3 4]; plen=4; plen2=5; plen3=6; plen4=7.1; plen5 = 8;
+rtmp = pdload('right');
+vp1 = (dt:dt:(nsamps+1)*dt)'-dt;
+
+vp_temp=240*(0:8)'+50;
+vp_burn=0*(1:5)';
+vp2=[vp_temp']';
+vp3=240*(9:12)'+50;
+vp4=240*(13:16)'+50;
+vp5=240*(17:20)'+50;
+
+m_start = 1e-3*max([vp1'])+sum(rtmp.reload.time)+.12;
+m_dur = 1;%rtmp.meas.time(1:3)*[1;-1;-1];
+pars1 = [plen, max(vp1), NaN, m_start, m_dur, 0]; 
+pars2=[plen2, norm(rtmp.sep.val)/sqrt(2), 0]; 
+pars3=[plen3, norm(rtmp.sep.val)/sqrt(2), 0]; 
+pars4=[plen4, norm(rtmp.sep.val)/sqrt(2), 0];
+pars5=[plen5, norm(rtmp.sep.val)/sqrt(2), 0];
+etmp=rtmp.exch; etmp.val(1:3) =[rtmp.markerburst.val(1:2),norm(rtmp.sep.val)/sqrt(2)]; %exchange at sep. 
+
+pg.dict={struct('prep','@adprep', 'read2','@adread','prep2','@RFyprep','read','@RFyprep','exch',etmp),'right'};
+pg.varpar={vp1, vp2, vp3, vp4, vp5};%128+0*(1:128)';
+pg.params = {pars1, pars2, pars3, pars4, pars5};
+pg.name=sprintf(('dBz_rot_ramsey_CDS_2014_01_10_5'),upper(pg.dict{end}(1)));
+    try
+        plsupdate(pg);
+    catch
+        plsdefgrp(pg);
+    end
+awgadd(pg.name);
+awgcntrl('on start wait err raw');
+end
+scan=fConfSeq2_v4(pg.name,struct('nloop',1,'nrep',nreps,'opts','FPGA2 logdbz pol','datachan','DAQ2','FPGA','freqs array'));    
+%    mean_outvals=linspace(mean_out0-4000,mean_out0+6000,nexp)
+%gainvals=[0 linspace(36,39,nexp-1)]; 
+%offvals=linspace(10220,10280,nexp);
+offvals=[10244];
+gain=37.5; 
+ for j=1:length(offvals)
+    offset=offvals(j); 
+    %offst=mean_out0-gain*mean_freq;     
+    %offst=mean_out-gain*mean_freq2;     
+    vi.SetControlValue('Offset',offset); 
+    vi.SetControlValue('Gain',gain);     
+    if sm_setgradient
+        d=smrun(scan,smnext('rot_ramsey_FPGA_R'));
+        %d=smrun(scan);
+    end
+    
+    if any(isnan(d{1}))
+       break 
+    end
+end
+ vi.SetControlValue('stop',true)
+sleep
+
+%% dBz/Ramsey: single evo sweep estimation number or pulse length
+mean_out0=17350; mean_freq=250; 
+cntrl_out=18350;
+
+ests=120;%[20 40 60 80 100 120 140 160 180 200];
+plens=[4 6 8 10 12 14 16 18 20 22 24 26 28 30];
+ngp = length(awgdata.pulsegroups);
+
+for k=1:length(plens)
+    
+nreps=1024;  nsamps=ests(1); nests=nsamps;
+CS.MaxPulseCount.set(nsamps); 
+CS.SampleCount.set(9);
+    vi.SetControlValue('N exps',nexp); 
+    vi.SetControlValue('N reps',nreps); 
+    vi.SetControlValue('N index',nsamps);
+    vi.SetControlValue('N est',nests);
+    vi.SetControlValue('control output',cntrl_out);
+    vi.SetControlValue('phase',0);
+
+try
+    vi.Run([true]);
+catch
+end
+    vi.SetControlValue('Reset',true);
+if 1    
+clear pg 
+pg.pulses=[71 72 72 72]; dt=12; 
+pg.ctrl='multi single'; 
+pg.chan = [3 4]; 
+plen=plens(k); plen2=5; plen3=6; plen4=7.1;
+%plen=4; plen2=5; plen3=6; plen4=7;
+% plen=4; plen2=4; plen3=4; plen4=4;
+rtmp = pdload('right');
+vp1 = (dt:dt:(nests+1)*dt)'-dt;
+% vp2 =120*(0:16)';
+% vp3=120*(17:25)';
+% vp4=120*(26:33)';
+
+% vp2 =5*(0:29)';
+% vp3=5*(30:69)';
+% vp4=5*(70:100)';
+
+vp_temp=240*(0:8)'+50;
+vp_burn=0*(1:5)';
+vp2=[vp_temp']';
+vp3=240*(9:12)'+50;
+vp4=240*(13:16)'+50;
+m_start = 1e-3*max([vp1'])+sum(rtmp.reload.time)+.12;
+m_dur = 1;%rtmp.meas.time(1:3)*[1;-1;-1];
+pars1 = [plen, max(vp1), NaN, m_start, m_dur, 0]; 
+pars2=[plen2, norm(rtmp.sep.val)/sqrt(2), 0]; 
+pars3=[plen3, norm(rtmp.sep.val)/sqrt(2), 0]; 
+pars4=[plen4, norm(rtmp.sep.val)/sqrt(2), 0];
+etmp=rtmp.exch; etmp.val(1:3) =[rtmp.markerburst.val(1:2),norm(rtmp.sep.val)/sqrt(2)]; %exchange at sep. 
+
+pg.dict={struct('prep','@adprep', 'read2','@adread','prep2','@RFyprep','read','@RFyprep','exch',etmp),'right'};
+pg.varpar={vp1, vp2, vp3, vp4};
+pg.params = {pars1, pars2, pars3, pars4};
+namepat='dBz_rot_ramsey_CDS_2014_R_01_10_2_%d'; 
+pg.name=sprintf(namepat,nests);
+
+    try
+        plsupdate(pg);
+    catch
+        plsdefgrp(pg);
+    end
+    
+awgrm(ngp,'after');
+awgclear('unused'); awgclear('unused');
+awgadd(pg.name);   
+awgcntrl('on start wait err raw');
+
+end
+scan=fConfSeq2_v4(pg.name,struct('nloop',1,'nrep',nreps,'opts','FPGA2 logdbz pol','datachan','DAQ2','FPGA','freqs array'));    
+%    mean_outvals=linspace(mean_out0-4000,mean_out0+6000,nexp)
+%gainvals=[0 linspace(36,39,nexp-1)]; 
+%offvals=linspace(10100,10300,nexp);
+offvals=[10220];
+gain=37.5;
+% gain=0;
+% offvals=20084;
+ for j=1:length(offvals)
+    offset=offvals(j); 
+    %offst=mean_out0-gain*mean_freq;     
+    %offst=mean_out-gain*mean_freq2;     
+    vi.SetControlValue('Offset',offset); 
+    vi.SetControlValue('Gain',gain);     
+    if sm_setgradient
+        d=smrun(scan,smnext(sprintf('rot_ramsey_FPGA_R_%d',plens(k))));
+        %d=smrun(scan);
+    end
+    
+    if any(isnan(d{1}))
+       break 
+    end
+ end
+ 
+if any(isnan(d{1}))
+    break 
+ end
 end
  vi.SetControlValue('stop',true)
 sleep
@@ -812,7 +1015,7 @@ end
 %FPGA Ramsey Ramsey 
 %estimate detuning w/ ramsey then do ramsey. 
 %currently uses multiple time offsets. 
-if 0
+if 1
 
 clear pg 
 dt=16; num_pulse=4; num_evo=floor(120/num_pulse); %assumes we have 120 total evos. 
@@ -886,7 +1089,7 @@ for k=1:num_pulse
 pls_name=sprintf(namepat,upper(pg.dict{end}(1)),offvalstm(k)); %check that this is set correctly 
 scan=fConfSeq2_v4(pls_name,struct('nloop',1,'nrep',nreps,'opts','FPGA logdbz pol','datachan','DAQ2'));    
 %gainvals=[linspace(27,29,nexp-1)];
-gainvals=0;
+gainvals=27;
 %outvals=linspace(20250,20750,nexp-1);
 for j=1:length(gainvals)
 %for j=1:length(outvals)
@@ -915,7 +1118,7 @@ end
  vi.SetControlValue('stop',true)
 sleep
 
-%% Sweep the number of estimations to see what the optimum is
+%% Ramsey/Ramsey: single evo sweep estimation number
 %FPGA Ramsey Ramsey 
 %estimate detuning w/ ramsey then do ramsey. 
 

@@ -70,6 +70,7 @@ for j =1:length(d)
     cnum=mod(j,7)+1;
     results(j).data = squeeze(nanmean(d(j).data{1}(:,:,evoinds)))';
     results(j).xv = d(j).xv{1}(evoinds);
+    figure(666);
     plot(results(j).xv,results(j).data,c(cnum),'DisplayName',d(j).filename(4:end-4));    
     pars= [0.4,0.2,110,.1,700,1.5];
     if isfield(d(j).scan.data.FPGA,'Gain') && ~isempty(d(j).scan.data.FPGA.Gain)
@@ -77,6 +78,7 @@ for j =1:length(d)
     else
         gain(j)=nan;
     end
+    gain(j)=fourier_size; 
     %gain(j)=d(j).scan.data.FPGA.Offset
     try
       pars = fitwrap('plinit plfit',results(j).xv,results(j).data,pars,fitfn,[1 1 1 1 1 0]);
@@ -97,7 +99,7 @@ for j =1:length(d)
         results(j).fitpars = [];
     end
 end
-
+%%
 figure(666);
 hleg=legend('toggle');
 set(hleg,'Interpreter','none');
