@@ -289,7 +289,7 @@ for j = 1:length(plsgrp)
        else
           sdum = sampler;
        end
-       dummy = false(2,hwsr/sdum);
+       dummy = false(2,round(hwsr/sdum));
        for ll = 1:2
          mind=round(hwsr * cumsum(rdout(j).readout(:,2:3,k))*plsdata.tbase/awgdata(1).clk);
          dummy(ll,mind(1):mind(2))=true;

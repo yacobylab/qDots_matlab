@@ -8,13 +8,17 @@ function out = ana_rescale_dbz_multi(file, config)
 %calib fits first data set (hopefully, 0 to 49 ns evo time to find alpha
 %and beta 
 % fpga replaces the fourier data with fpga data. 
-
+% rawdata will enable you to use raw data, unpacking it to 2d array of
+% nreps * nloops, npls 
+%Note: the Bayesian may start to crash if you give it really large data
+%sets. 
 %configs: 
 %threshold selects where to threshold scaled (0-1) data for fourier, bayes.
 %fpga_thresh defaults to the threshold used by fpga, all vals > threshold
 %are singlet, all less are triplet. 
 %bayes_freq takes a lo and hi frequency in MHz as limits of Bayes Frequency
 %range. 
+
 
 
 % noscaleold, w/ config thresh won't scale data and manually thresholds
@@ -59,9 +63,18 @@ for j = 1:length(file)
     else
         [t1t t1] = att1(config.side,scantime,'after'); %find t1 for histogramming. 
     end
-    data_all=anaHistScale(scan,data,t1); % Histogram all data; 
-    data=squeeze(data_all{1});
+    if isopt(config,'rawdata')
+        rawdata=anaRawUnpack(scan,data);
+        data_all=anaRawScale(rawdata,t1);     
+        data=squeeze(permute(data_all{1},[3,2,1]));     
+    else
+        data_all=anaHistScale(scan,data,t1); % Histogram all data;
+        data=squeeze(data_all{1});
+    end
     xv = plsinfo('xval',scan.data.pulsegroups.name,[],scantime);
+    if size(xv,1)>1 && size(xv,2)>1 %to deal w/ multidimensional varpars. 
+        xv=xv(1,:); 
+    end
     if j ==1
         if isfield(scan.data,'pre_dbz') && isfield(scan.data,'post_dbz') %set the mean nuclear gradient based on first scan. 
             config = def(config,'m_dbz',.5*1e-3*abs(scan.data.pre_dbz+scan.data.post_dbz)); %in GHz
@@ -196,7 +209,7 @@ for j = 1:length(results)
             end
     elseif isopt(config,'bayslw')  
         dbz = get_dbzbayes(results2(j).fourier_data,config.ftime,F_samp,n_alias);
-    elseif isopt(config, 'raw') %plot the raw data only, no correction
+    elseif isopt(config, 'rawfreqs') %plot the raw data only, no correction
         dbz=config.m_dbz*linspace(1,1,size(results2(j).fourier_data,1))';
     elseif isopt(config, 'fpgafreqs') %load the freqs from the FPGA and use them for the correction                          
         %actfreqs=2*(1/12/2)-freqs*(1/12/2)/256; %hard-coded aliasing correction
@@ -240,16 +253,9 @@ if isopt(config,'single')
     %for k=1:length(results); 
     for k=1:length(results);
         tstemp=results(k).dbzs*results(k).t/mdbz;%this is a matrix of corrected times, with each entry corresponding to an entry of the evolution data, it's a column vector of magnetic field corrections for each of the 1000 runs multiplied by a row vector of the 50 nominal times
-        %tstemp=results(k).dbzs*results(k).t/mean(results(k).dbzs);
-        inds=find(results(k).stddbz>config.std); 
-        tstemp(inds,:)=[];
         tst=tstemp(:);%arrange all data points into a vector, the vector will be roughly time ordered
-        evo_data=results(k).evo_data>config.threshold; 
-        evo_data(inds,:)=[];
-        evost= evo_data(:);%similarly arrange the readout data, the entries of this vector will still correspond to the times in tst    
-        numfilt=500; 
-        evost=evost(numfilt:end-numfilt); 
-        tst=tst(numfilt:end-numfilt); 
+        evo_data=results(k).evo_data>config.threshold;         
+        evost= evo_data(:);%similarly arrange the readout data, the entries of this vector will still correspond to the times in tst                             
         tstall=[tstall; tst];
         evostall=[evostall; evost];
     end    

@@ -292,8 +292,8 @@ for j =1:length(d)
     evoinds=fourier_size+[1:evo_size];
     fileindex=strfind(d(j).filename,'.mat');
     %param(j)=d(j).scan.data.FPGA.Offset;
-    %param(j)=d(j).scan.data.FPGA.Gain;
-    param(j)=fourier_size-1;
+    param(j)=d(j).scan.data.FPGA.Gain;
+    %param(j)=fourier_size-1;
     %param(j)=str2num(d(j).filename(fileindex-6));
     
     cnum=mod(j,7)+1;
@@ -328,8 +328,9 @@ end
 %% Fit the data sets and plot T2* vs the parameter.
 data = []; model = []; tau=[]; fit=[]; period= []; inds=[]; decay=[];
 figure(667); clf; hold on; figure(668); clf;
-period=[]; tau=[]; betas=[];
+period=[]; tau=[]; betas=[]; pars=[];
 boundary = 0;
+clear pars
 for j = 1:length(results)
     cnum=mod(j,7)+1;
     if all((~isnan(results(j).data)))
@@ -339,21 +340,21 @@ for j = 1:length(results)
         data(j).y = results(j).data(:,maskfit); 
         data(j).x = results(j).xv(:,maskfit);
         figure(13); hold on; plot(data(j).x,data(j).y)
-% %         fitfn = @(p,x) p(1) +(p(2)*sin(2*pi*x/p(3) +p(6))).*exp(-((x)/p(4)).^p(5));
-% %         pars = [.3, .3, 2000, 1000, 2,-pi/2];
+        fitfn = @(p,x) p(1) +(p(2)*sin(2*pi*x/p(4) +p(6))).*exp(-((x)/p(3)).^p(5));
+        pars = [.3, .3, 1000, 200, 1.5,-pi/2];
        
-        fitfn = @(p,x) p(1) +p(2)*exp(-((x)/p(3)).^p(4));
-        pars = [.3, .3, 1500,1.5];
+%         fitfn = @(p,x) p(1) +p(2)*exp(-((x)/p(3)).^p(4));
+%         pars = [.3, .3, 1500,1.5];
         
         options = optimset('Display','off','MaxIter',10000,'TolFun',1e-13,'Algorithm',{'levenberg-marquardt',.005});
 
       try
         %Lsq seems a bit more robust the nlinfit, so do it first.
-        [pars B res D E F jac] =lsqcurvefit(fitfn,pars,data(j).x,data(j).y,[],[],options);
-       [pars,res,jac,sig] = fitwrap('plinit plfit',data(j).x,data(j).y,pars,fitfn,[1 1 1 1]);
+       [pars B res D E F jac] =lsqcurvefit(fitfn,pars,data(j).x,data(j).y,[],[],options);
+       [pars,res,jac,sig] = fitwrap('plinit plfit',data(j).x,data(j).y,pars,fitfn,[1 1 1 1 1 1]);
         
        jac=jac';
-       jac=reshape(jac,length(jac)/4,4); 
+       jac=reshape(jac,length(jac)/6,6); 
         
        ci=nlparci(pars,res,'jacobian',jac);
        results(j).T2 =abs(pars(3));

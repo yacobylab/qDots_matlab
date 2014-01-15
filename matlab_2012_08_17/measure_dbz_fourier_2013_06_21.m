@@ -125,17 +125,18 @@ pg.ctrl='loop multi';
 pg.chan=[3 4]; pg.dict='right';
 trep_all=(dt:dt:nrep(end)*dt)';
 params_est=[]; trep=[];
-
-   for i=1:3
-%        treps=trep_all(nrep(i)+1:nrep(i+1));
-%        treps2=[treps; treps];        
-%        trep{i}=sort(treps2); 
-       trep{i}=trep_all(nrep(i)+1:nrep(i+1));
-       params_est{i}=[plen_ests(i) max(trep{i}) NaN 0];
-   end
-   params_est{i+1}=[4.5 3e3 NaN 0];
-   trep{i+1}=3e3; 
-    pg.name=sprintf('dBz_rottest_2014_01_13_3_%s',upper(pg.dict(1)));
+t_evo=0:100:3e3;
+for j=1:length(t_evo)
+    for i=1:3
+        %        treps=trep_all(nrep(i)+1:nrep(i+1));
+        %        treps2=[treps; treps];
+        %        trep{i}=sort(treps2);
+        trep{i}=trep_all(nrep(i)+1:nrep(i+1));
+        params_est{i}=[plen_ests(i) max(trep{i}) NaN 0];
+    end
+    params_est{i+1}=[4.5 t_evo(j) NaN 0];
+    trep{i+1}=t_evo(j);
+    pg.name=sprintf('dBz_rottest_2014_01_13_4_%s',upper(pg.dict(1)));
     pg.varpar=trep(:)';
     pg.params=params_est(:)';
     try
@@ -147,14 +148,113 @@ params_est=[]; trep=[];
     awgrm(27,'after'); awgclear('unused');
     awgadd(pg.name);
     awgcntrl('on start wait err raw');
-    for i=1:5 
+    
+    
+    nshts=32;
+    scan=fConfSeq2_v4(pg.name,struct('nloop',nshts,'nrep',1024, 'opts','pol raw logdbz','datachan','DAQ2'));
+    scan.saveloop=[1 256];
+    
     if sm_setgradient
-        d=smrun(fConfSeq2_v4(pg.name,struct('nloop',1,'nrep',2048, 'opts','pol logdbz','datachan','DAQ2')),smnext(sprintf('dBz_phase_%d_R',dt)));
+        d=smrun(scan,smnext(sprintf('dBz_phase_%d_R',dt)));
         if any(isnan(d{1})); break; end
     else
         fprintf('cannot lock gradient');
     end
+end
+sleep
+
+
+%% One evo, backwards and forwards estimations. 
+dt=12; bb=tic;
+counter = 1;
+plen_evo=4.5; 
+clear pg;
+pg.pulses=[12 12];
+pg.ctrl='multi loop';
+pg.chan=[3 4]; pg.dict='right';
+
+t_evo=[500:100:800];
+nrep=110; 
+trep=(dt:dt:nrep*dt)';
+trep=flipud(trep); 
+plen_est=2.5; 
+
+for j=1:length(t_evo)
+    params_est=[plen_est max(trep) NaN 0];
+    params_evo=[plen_evo t_evo(j) NaN 0];    
+    pg.varpar={trep, t_evo(j)};
+    pg.params={params_est,params_evo};  
+    pg.name=sprintf('dBz_rottest_2014_01_15_3_%s',upper(pg.dict(1)));
+    try
+        plsupdate(pg);
+    catch
+        plsdefgrp(pg);
     end
+    
+    awgrm(27,'after'); awgclear('unused');
+    awgadd(pg.name);
+    awgcntrl('on start wait err raw');
+    
+    
+    nshts=32;
+    scan=fConfSeq2_v4(pg.name,struct('nloop',nshts,'nrep',1024, 'opts','pol raw logdbz','datachan','DAQ2'));
+    scan.saveloop=[1 256];
+    
+    if sm_setgradient
+        d=smrun(scan,smnext(sprintf('dBz_phase_%d_%d_R',dt,t_evo(j))));
+        if any(isnan(d{1})); break; end
+    else
+        fprintf('cannot lock gradient');
+    end
+end
+sleep
+%% Exponentiallly increasing estimation times.
+%
+dt=12; bb=tic;
+counter = 1;
+
+ests=60;
+N_max=350;
+exp_exp=log(N_max)/ests;
+
+
+plen_evo=4.5; 
+clear pg;
+pg.pulses=12;
+pg.ctrl='loop';
+pg.chan=[3 4]; pg.dict='right';
+
+t_evo=4e3; 
+for j=1:length(t_evo)
+    time_vector=[round(exp(exp_exp.*(1:1:ests)')).*dt; t_evo'];
+    manip_time=1250;
+    plen=ceil((manip_time+time_vector)./(1000*.25)).*.250;
+    pg.varpar=[plen, time_vector, NaN(size(plen)), time_vector];
+    pg.params=[max(plen), max(time_vector), NaN, 0];  
+    pg.name=sprintf('dBz_rottest_exp_time_2014_01_15_1_%s',upper(pg.dict(1)));
+    plsdefgrp(pg);
+%     try
+%         plsupdate(pg);
+%     catch
+%         plsdefgrp(pg);
+%     end
+    
+    awgrm(27,'after'); awgclear('unused');
+    awgadd(pg.name);
+    awgcntrl('on start wait err raw');
+    
+    
+    nshts=32;
+    scan=fConfSeq2_v4(pg.name,struct('nloop',nshts,'nrep',1024, 'opts','pol raw logdbz','datachan','DAQ2'));
+    scan.saveloop=[1 256];
+    
+    if sm_setgradient
+        d=smrun(scan,smnext(sprintf('dBz_exp_phase_%d_R',dt)));
+        if any(isnan(d{1})); break; end
+    else
+        fprintf('cannot lock gradient');
+    end
+end
 sleep
 %% same scan as above, but forward time, and repeat estimation twice. 
 

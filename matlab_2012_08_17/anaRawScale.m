@@ -28,6 +28,9 @@ end
 
 % t1 is the ratio of t1 to the relevant measurement time 
 function [fitfn, initfn] = getfn(t1)
+if isnan(t1) 
+    t1=1e-5; 
+end
 
 distfn = @(a, x) exp(-a(1)) * exp(-(x-1).^2./(2* a(2)^2))./(sqrt(2 * pi) * a(2)) + ...
      a(1)/2 * exp(a(1)/2 * (a(1) * a(2)^2 - 2 * x)) .* ...
